@@ -1,0 +1,5 @@
+lr: 0.0007511249842440639
+first_layer: 256
+second_layer: 32
+third_layer: 32
+batch_size: 256
