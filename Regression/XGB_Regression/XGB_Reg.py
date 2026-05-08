@@ -22,10 +22,6 @@ Outputs
 -------
 *  PLOT_DIR / "{model_tag}_*.png"  — diagnostic plots, one set per model.
 *  Input_lists / XGB_REG_INPUT.txt — top-20 feature list for downstream reuse.
-
-This file is a script (not a notebook), so plots are written to disk rather
-than shown interactively. Each filename is prefixed with a model tag
-(`full_features` vs `top20_features`) so the two passes never collide.
 """
 from __future__ import annotations
 

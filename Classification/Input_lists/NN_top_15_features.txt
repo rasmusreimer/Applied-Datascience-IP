@@ -1,0 +1,15 @@
+p_deltaEta1
+p_TRTPID
+pX_topoetcone20
+p_numberOfInnermostPixelHits
+p_sigmad0
+pX_E_Lr1_MedG
+p_Rhad
+pX_MultiLepton
+p_dPOverP
+pX_E_Lr0_HiG
+pX_topoetcone40ptCorrection
+pX_neflowisol30
+pX_core57cellsEnergyCorrection
+p_weta2
+pX_E_Lr1_HiG

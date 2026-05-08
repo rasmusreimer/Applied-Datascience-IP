@@ -32,9 +32,10 @@ Four models in a 2 × 2 grid: **{NN, XGBoost} × {Mutual-Information features, X
 Drop pairs with |corr| > 0.95 (keep the higher-MI side), then take the top 15 by `mutual_info_classif`. Standard-scaled for the NN.
 
 **XGB-Feature-Importance selector** (`full_feature_data_preprocess` + a baseline XGB)
-Train an unconstrained XGB on the full feature set, persist its top 15 by feature importance gain, reuse that subset for both the FI-track XGB *and* the FI-track NN — so the NN gets exactly the features the boosted tree found most informative.
-NB. Nothing tells us that the NN should neccesarily like the same features as XGB, However it is quite computationally heavy to train a NN compared to XGB, and the Features given by XGB, resultet in an AUC of .99 for the NN so it at least a decent choice. However at a later point a full training run on all features should be done to the NN as well to determine if it really is the same 15 features that gives the best results for the NN.
+Train an unconstrained XGB on the full feature set, persist its top 15 by feature importance gain, reuse that subset for both the FI-track XGB.
 
+**NN-SHAP selector (full-features NN + SHAP)**
+Symmetric construction for the NN: train a NN on the full feature set, take the top 15 by mean absolute SHAP value. There's no a priori reason a NN should rank features the same way a boosted tree does, and a full-features NN run is much more expensive than its XGB counterpart — so it's worth checking whether the cheaper shortcut (reuse XGB's gain-ranked list for the NN) leaves performance on the table. The two lists overlap heavily but not perfectly. Downstream, the difference doesn't show up: the NN reaches AUC ≈ 0.99 on either list, with accuracy and F1 indistinguishable.
 Architectures:
 
 - **NN** — `ThreeLayerNN` (`Modules/models.py`): 15 → 256 → 32 → 32 → 1, sigmoid head, BCE loss, AdamW, ReduceLROnPlateau, early stopping on val, BCE on a held-out val fold for Optuna's objective.
@@ -52,6 +53,7 @@ Architectures:
 | **XGB — FI (full → top-15)** | **15 (FI)** | **0.974** | **0.95** | **0.92** | **0.94** |
 
 **Headline.** The feature subset selected by the boosted tree itself is more informative than the MI-ranked subset for *both* model families. The NN gains ~7 pp F1 just by switching feature lists at fixed architecture; the XGB gains ~9 pp. MI-track recall caps near 0.74 — those features carry the easy positives and miss the hard ones.
+Interestingly the MI based NN approach results in 50% less falsepositives, but around twice as many falsenegatives.
 
 A SHAP summary on the tuned NN-FI model (cell 10 of `NN_Class_feature_importance.ipynb`) shows the top contributors are `p_TRTPID`, `pX_MultiLepton`, and `p_Eratio` — consistent with the physics: TRT particle ID and shower-shape ratios dominate electron PID at ATLAS.
 
@@ -134,30 +136,7 @@ The relative-error histograms (`Regression/XGB_Regression/XGB_Reg_plots/top20_tu
 
 ## FUTURE IMPLEMENTATION
 
-**Task 3 — Clustering.** Unsupervised structure-finding on the same features as a third lens on what the data carries. Will live in a new top-level `Clustering/` folder; placeholder noted in the repo name.
-
 Path invariance
-Currently uses absolute paths in multiple places, i aim to fix this.
----
+~~Path invariance — currently uses absolute paths in multiple places.~~ - fixed
 
-## Reproducing the work
-
-The XGB regression script is the only piece that runs out-of-the-box:
-
-```bash
-cd Regression/XGB_Regression
-python XGB_Reg.py
-```
-
-It writes plots to `XGB_Reg_plots/` and the top-20 feature list to `Regression/Input_lists/`.
-
-The notebooks currently use absolute paths (`/Users/prometheus/...`) — known issue, on the cleanup list. To run them, swap the `DATA_PATH` / `FEATURE_LIST_PATH` constants at the top of each notebook to point at your local `Data/` and `Input_lists/` directories. Runtime budgets:
-
-- Classifier NN Optuna sweep: ~90 min on Apple Silicon (M3, MPS backend)
-- Regression NN Optuna sweep (400 trials): comparable
-- XGB sweeps: minutes
-
-Both NN training loops auto-select MPS → CUDA → CPU. All RNG seeds are pinned to 42.
-
----
-
+~~NN features decided via a feature importance test on the full input feature set, instead of inheriting the input features from XGB. They will likely be similar, and the compute demand for the training is vastly greater, but for a fair comparison this should be implemented~~ - implemented
