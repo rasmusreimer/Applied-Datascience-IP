@@ -1,0 +1,67 @@
+Classification:
+
+NN_MI
+Initial idea was to eliminate correlated pairs, and then look for what features had the highest mutual information score in relations to the target variable, 
+and then sort the input features accordingly, using the top 15 to train a NN on. 
+It was done in such a way that the correlated pairs was computed first, and then the feature in the pair with the lowest MI score would be dropped, 
+then the remaining features would be ranked by highest MI score.
+This became the NN_MI model. a three layer Neural Net, optimized by AdamW with the following hyper parameters:
+
+lr: 0.0007511249842440639
+first_layer: 256
+second_layer: 32
+third_layer: 32
+batch_size: 256
+
+Theese were found with an overnight run of optuna.
+I figured dropout was unneceary as the model did not generally overfit.
+Also i opted against cross validation due to the compute demand of k-fold cross validation, and instead went for 3 way split - Train, validation and an unseen test set that was saved for the final validation.
+
+This yielded an AUC of .96 and a confusion matrix with very few false positives (250) but relatively many false negatives (1900) there fore more methods were needed.
+
+XGB_MI
+The next model was a decision tree 
+Initially also a mutual information, following the same steps for selecting input features as above, this was not submitted but obtained even ever so slightly better
+metrics than the NN, at vastly faster training time (one or two seconds compared to minutes)
+
+It obtained an AUC of .97, but showed the same result with few false positive, but many false negatives.
+
+
+XGB_FI
+The next approach top sort the input features by first training a larger model, and computing the feuture importance on that, 
+and then nusing the 15 most important features on the smaller model.
+
+First procedure on all models was to remove correlated pairs, and keeping the higher MI score feature of the individual pairs, this process removes 44 input_features.
+
+The model trained on the remaining features obtained an auc of .995 with rougly 300 fp and 600 fn 
+
+sorting by feature importance and training the final model on the 15 most infuencing features resultet in an auc of
+.992 with 330 fp and 600 fn 
+
+showing that loss in accuracy by cutting around 80 features nearly didnt impact the performance of the model.
+Hyper parameters were again tuned with optuna, this tim vastly quicker due to being able to use paralesation, yielding the following:
+
+n_estimators: 10000
+max_depth: 4
+learning_rate: 0.1
+subsample: 0.8
+reg_lambda: 1
+eval_metric: logloss
+early_stopping_rounds: 10
+
+
+NN_FI
+Same idea as with the XGB_FI, however as pytorch dosnt have a native feature importance metric, SHAP values were used instead on a subset of the data.
+Selecting the 15 features with the highest absolute shap values yielded a model equal in performance to XGB_FI however much longer to train.
+Uses the same hyper parameters as the NN_MI but given time i should implement an optuna or randomsearch to tune it specifically to this.
+However with an auc of .990 it still performs well. also optimized by AdamW
+
+HP:
+lr: 0.0007511249842440639
+first_layer: 256
+second_layer: 32
+third_layer: 32
+batch_size: 256
+
+
+Regression

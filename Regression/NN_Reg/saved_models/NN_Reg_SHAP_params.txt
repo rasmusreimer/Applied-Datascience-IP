@@ -1,0 +1,7 @@
+first_layer: 128
+second_layer: 256
+third_layer: 64
+dropout: 0.04305224728593615
+lr: 0.0014369944935679968
+weight_decay: 0.0028348524707913665
+batch_size: 64
