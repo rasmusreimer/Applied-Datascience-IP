@@ -110,4 +110,28 @@ Best params:
 RelMAD (test): 0.23029
 
 
-XGB still appears to outperform in both compute and effect at least in the test split
+XGB still appears to outperform in both compute and effect at least in the test split.
+
+Clustering
+Two clustering models on the same 6 input features.
+
+Feature selection was based on the correlation matrix and a bit of domain knowledge. The three photometric variables (J, H, K) are correlated at r > .99 with each other 
+and mostly trace brightness / distance which isnt useful for population clustering, so they were dropped. 
+The alpha-elements (O, MG, SI, CA) trace each other at r ~ .6-.8, so only MG_FE was kept as the representative for that group. Final 6 features:
+
+FE_H, MG_FE, AL_FE, N_FE, E, Lz
+
+4 chemistry + 2 kinematic. Each pair within the 6 has |r| < .65, so all 6 slots cover roughly independent information rather than three copies of the same axis.
+
+Before fitting, IsolationForest was used to trim a handful of extreme outliers (contamination=0.001, around 6 stars) that otherwise pulled GMM components onto themselves. 
+Fitting was done on the trimmed set, but prediction was done on all 5950 stars so every row still gets a label.
+
+Swept k from 4 to 40 for both KMeans and GMM. Silhouette score on both, plus BIC for the GMM. The two metrics disagreed:
+
+KMeans silhouette argmax: k=5  (sil = 0.262)
+GMM    silhouette argmax: k=6  (sil = 0.220)
+GMM    BIC argmin:        k=13
+
+To pick between them both candidates were visualized on a UMAP projection. The data forms two natural macro-blobs, 
+both of which contain visible substructure that KMeans k=5 paints over but GMM k=13 follows. 
+
