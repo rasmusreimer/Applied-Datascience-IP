@@ -5,6 +5,7 @@ This module contains utility functions for data preprocessing, feature selection
 # Import necessary libraries
 import pandas as pd
 import numpy as np
+import torch
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
 from sklearn.model_selection import train_test_split
@@ -190,3 +191,73 @@ def XGB_REG_DATALOADER(data_path, target_col, test_size=0.2):
 
 
     return X_train, X_test, y_train, y_test
+
+
+def NN_REG_PRESET_FEATURES_DATALOADER(data_path, target_col, test_size=0.2,
+                                      val_size=0.1, random_state=42):
+    """
+    Minimal data loader for the NN regression pipeline. Assumes a feature list
+    has already been chosen upstream — no feature selection, no scaling here.
+    Scaling is the caller's responsibility (fit StandardScaler on the returned
+    training set only, to avoid leakage).
+
+    Three-way split: test_size to test, val_size of the *original* dataset to
+    val, rest to train. Default 0.2/0.1/0.7.
+
+    Filters to true electrons and drops both `p_Truth_isElectron` (filter
+    target) and `p_Truth_Energy` (regression target) from features to prevent
+    leakage.
+
+    Parameters
+    ----------
+    data_path : str    e.g. 'Data/AppML_InitialProject_train.h5'
+    target_col : str   e.g. 'p_Truth_Energy'
+    test_size : float  fraction of full dataset reserved for test
+    val_size  : float  fraction of full dataset reserved for val
+    random_state : int seed for both splits
+
+    Returns
+    -------
+    X_train, X_val, X_test, y_train, y_val, y_test  (pandas)
+    """
+    # ---- Load ---------------------------------------------------------------
+    data = pd.read_hdf(data_path)
+
+    # Keep only true electrons; drop the filter target so it can't leak.
+    data = data[data['p_Truth_isElectron'] == 1].copy()
+    y = data[target_col]
+    X = data.drop(columns=['p_Truth_isElectron', target_col])
+
+    print(f"Dataset loaded from {data_path} with shape {X.shape}")
+
+    # ---- Sanity checks ------------------------------------------------------
+    n_missing = int(X.isnull().sum().sum())
+    if n_missing > 0:
+        print(f"Warning: {n_missing} missing values detected — NN training "
+              f"will fail until these are handled.")
+        print(X.isnull().sum().loc[lambda s: s > 0])
+    else:
+        print("No missing values detected.")
+
+    # ---- Three-way split ----------------------------------------------------
+    # First split: peel off the test set.
+    X_trainval, X_test, y_trainval, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state,
+    )
+
+    # Second split: peel off val from what remains. The val_size argument is
+    # expressed as a fraction of the *original* dataset, so we rescale it to
+    # the fraction of the trainval subset that should go to val.
+    val_fraction_of_remainder = val_size / (1.0 - test_size)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_trainval, y_trainval,
+        test_size=val_fraction_of_remainder,
+        random_state=random_state,
+    )
+
+    n_total = len(X)
+    print(f"Split: train {len(X_train)} ({len(X_train)/n_total:.1%})  "
+          f"val {len(X_val)} ({len(X_val)/n_total:.1%})  "
+          f"test {len(X_test)} ({len(X_test)/n_total:.1%})")
+
+    return X_train, X_val, X_test, y_train, y_val, y_test

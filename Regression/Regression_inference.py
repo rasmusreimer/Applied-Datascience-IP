@@ -16,11 +16,13 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 from pathlib import Path
 import sys
+import json
 
 import joblib
 import numpy as np
 import pandas as pd
 import torch
+from torch import nn
 
 
 # --- Paths --------------------------------------------------------------------
@@ -37,32 +39,28 @@ TEST_H5 = DATA_DIR / "AppML_InitialProject_test_regression.h5"
 TARGET_COL = "p_Truth_Energy"
 SUBMITTER  = "RasmusReimer"
 
-# Make Modules/ importable so we can reuse the trained-architecture class.
+# Make Modules/ importable for project-local imports if needed.
 sys.path.append(str(PROJECT_ROOT))
-from Modules.models import ThreeLayerRegressor
 
 
 # --- Solutions ----------------------------------------------------------------
-# Each entry maps a submission name to (kind, model file).
-# Both models are self-describing — the NN .pth bundles weights+scaler+features+
-# hparams, the XGB joblib pickle exposes `feature_names_in_`. So no separate
-# feature-list file is needed for either.
+# Each entry maps a submission name to (kind, model file, params file).
+# NN .pth is a dict bundling state_dict / scaler / features; the .txt holds
+# the architecture hyperparameters. XGB ships the model in a joblib and the
+# feature list + hyperparameters in a JSON sidecar.
 
 SOLUTIONS = [
-    ("NN_Reg",  "nn",  NN_DIR  / "NN_Reg_SHAP_artifact.pth"),
-    ("XGB_Reg", "xgb", XGB_DIR / "XGB_reg.joblib"),
+    ("NN_Reg",  "nn",  NN_DIR  / "NN_Reg_SHAP_artifact.pth", NN_DIR  / "NN_Reg_SHAP_params.txt"),
+    ("XGB_Reg", "xgb", XGB_DIR / "top20_tuned.joblib",       XGB_DIR / "top20_tuned_params.json"),
 ]
 
 
 # --- Helpers ------------------------------------------------------------------
 
-# Sanity cap on log(E) before exp(). The training-set energies span roughly
-# log(E) ∈ [0, 8] for E in GeV. A handful of held-out rows have feature
-# values thousands of σ from the training mean (sentinel-like values), and
-# the NN extrapolates to log-preds in the thousands — exp() then overflows
-# to inf and corrupts the CSV. Clipping keeps the submission finite without
-# silently hiding it: we also log how many rows we clipped.
-LOG_E_CLIP = 25.0   # exp(25) ≈ 7.2e10 GeV — already nonphysical, but finite
+# Sanity cap on log(E) before exp(). The training-set energies are in MeV
+# Cap just above the training max so extrapolated rows are
+# pinned to a physically plausible value instead of inflating the score.
+LOG_E_CLIP = 14.0   # exp(14) ≈ 1.2e6 MeV ≈ 1200 GeV — just above training max
 
 
 def _exp_with_clip(log_pred: np.ndarray, tag: str) -> np.ndarray:
@@ -73,36 +71,75 @@ def _exp_with_clip(log_pred: np.ndarray, tag: str) -> np.ndarray:
     return np.exp(np.clip(log_pred, -LOG_E_CLIP, LOG_E_CLIP))
 
 
-def predict_nn(artifact_path: Path, test_df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
-    """Load the bundled artifact (weights + scaler + features + params) and predict."""
-    artifact = torch.load(artifact_path, map_location="cpu", weights_only=False)
-    features  = list(artifact["features"])
-    scaler    = artifact["scaler"]
-    params    = artifact["params"]
-    log_target = bool(artifact.get("log_target", True))
+class SavedThreeLayerRegressor(nn.Module):
+    """Matches the fc1..fc4 keys saved by the NN_Reg_SHAP training notebook."""
+    def __init__(self, input_size, first_layer, second_layer, third_layer, dropout):
+        super().__init__()
+        self.fc1 = nn.Linear(input_size, first_layer)
+        self.fc2 = nn.Linear(first_layer, second_layer)
+        self.fc3 = nn.Linear(second_layer, third_layer)
+        self.fc4 = nn.Linear(third_layer, 1)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.dropout(self.relu(self.fc1(x)))
+        x = self.dropout(self.relu(self.fc2(x)))
+        x = self.dropout(self.relu(self.fc3(x)))
+        return self.fc4(x).view(-1)
+
+
+def _parse_params_txt(path: Path) -> dict:
+    """Parse a 'key: value' file, coercing values to int or float when possible."""
+    out: dict = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition(":")
+        value = value.strip()
+        try:
+            out[key.strip()] = int(value)
+        except ValueError:
+            try:
+                out[key.strip()] = float(value)
+            except ValueError:
+                out[key.strip()] = value
+    return out
+
+
+def predict_nn(model_path: Path, params_path: Path, test_df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
+    """Architecture from the .txt; state_dict, scaler, and feature list from the .pth dict."""
+    params = _parse_params_txt(params_path)
+    # weights_only=False because the artifact bundles a sklearn scaler alongside tensors.
+    artifact = torch.load(model_path, map_location="cpu", weights_only=False)
+    features = list(artifact["features"])
+    scaler = artifact["scaler"]
 
     # Pass the DataFrame (not .values) so the scaler matches by feature name.
     X = scaler.transform(test_df[features]).astype(np.float32)
 
-    model = ThreeLayerRegressor(
+    model = SavedThreeLayerRegressor(
         input_size=len(features),
-        first_layer_size=params["first_layer"],
-        second_layer_size=params["second_layer"],
-        third_layer_size=params["third_layer"],
-        dropout=params.get("dropout", 0.0),
+        first_layer=int(params["first_layer"]),
+        second_layer=int(params["second_layer"]),
+        third_layer=int(params["third_layer"]),
+        dropout=float(params.get("dropout", 0.0)),
     )
     model.load_state_dict(artifact["state_dict"])
     model.eval()
+
     with torch.no_grad():
-        pred = model(torch.from_numpy(X)).cpu().numpy()
+        log_pred = model(torch.from_numpy(X)).cpu().numpy()
 
-    return (_exp_with_clip(pred, "NN") if log_target else pred), features
+    return _exp_with_clip(log_pred, "NN"), features
 
 
-def predict_xgb(model_path: Path, test_df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
-    """XGBRegressor was trained on log(E), so undo that here."""
+def predict_xgb(model_path: Path, params_path: Path, test_df: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
+    """XGBRegressor was trained on log(E); feature list comes from the params JSON."""
+    payload = json.loads(params_path.read_text())
+    features = list(payload["features"])
     model = joblib.load(model_path)
-    features = list(model.feature_names_in_)
     log_pred = model.predict(test_df[features])
     return _exp_with_clip(log_pred, "XGB"), features
 
@@ -129,13 +166,13 @@ def main() -> None:
         test_df = test_df.drop(columns=[TARGET_COL])
     print(f"Loaded test set: {test_df.shape[0]} rows, {test_df.shape[1]} columns")
 
-    for name, kind, model_path in SOLUTIONS:
-        print(f"\n[{name}] model={model_path.name}")
+    for name, kind, model_path, params_path in SOLUTIONS:
+        print(f"\n[{name}] model={model_path.name}  params={params_path.name}")
 
         if kind == "nn":
-            energy, features = predict_nn(model_path, test_df)
+            energy, features = predict_nn(model_path, params_path, test_df)
         elif kind == "xgb":
-            energy, features = predict_xgb(model_path, test_df)
+            energy, features = predict_xgb(model_path, params_path, test_df)
         else:
             raise ValueError(f"unknown model kind: {kind}")
 

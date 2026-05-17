@@ -1,0 +1,52 @@
+{
+  "features": [
+    "p_ptcone40",
+    "pX_ecore",
+    "p_etcone20",
+    "pX_E3x5_Lr2",
+    "pX_deltaPhi2",
+    "pX_MultiLepton",
+    "p_pt_track",
+    "pX_E3x5_Lr0",
+    "pX_etcone20",
+    "pX_E3x5_Lr1",
+    "pX_maxEcell_energy",
+    "pX_nCells_Lr1_MedG",
+    "pX_E_Lr2_MedG",
+    "pX_E_Lr2_HiG",
+    "pX_deltaPhiFromLastMeasurement",
+    "pX_wtots1",
+    "p_numberOfPixelHits",
+    "pX_topoetcone40ptCorrection",
+    "pX_E_Lr0_HiG",
+    "pX_ambiguityType"
+  ],
+  "categorical_features": [
+    "pX_ambiguityType"
+  ],
+  "best_iteration": 620,
+  "metrics": {
+    "relmad_train": 0.11415197301428004,
+    "relmad_val": 0.20552460746124582,
+    "relmad_test": 0.2134063346158209
+  },
+  "params": {
+    "objective": "regression",
+    "metric": "mape",
+    "learning_rate": 0.03,
+    "num_leaves": 63,
+    "max_depth": -1,
+    "min_data_in_leaf": 20,
+    "feature_fraction": 0.85,
+    "bagging_fraction": 0.85,
+    "bagging_freq": 5,
+    "lambda_l1": 0.1,
+    "lambda_l2": 1.0,
+    "verbose": -1,
+    "seed": 42,
+    "num_iterations": 10000,
+    "categorical_column": [
+      19
+    ]
+  }
+}
