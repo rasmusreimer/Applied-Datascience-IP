@@ -49,11 +49,11 @@ Architectures:
 
 | Model | Features | Accuracy | Precision | Recall | F1 (electron) | AUC |
 |---|---|---|---|---|---|---|
-| NN — MI (Optuna-tuned) | 15 (MI) | 0.938 | 0.957 | 0.738 | 0.833 | ~0.96 |
-| NN — FI (Optuna-tuned) | 15 (FI) | 0.962 | 0.928 | 0.886 | 0.907 | ~0.99 |
+| NN — MI (Optuna-tuned) | 15 (MI) | 0.938 | 0.957 | 0.738 | 0.833 | 0.958 |
+| NN — FI (Optuna-tuned) | 15 (FI) | 0.962 | 0.928 | 0.886 | 0.907 | 0.982 |
 | XGB — MI (Optuna-tuned) | 15 (MI) | 0.944 | 0.95 | 0.77 | 0.85 | 0.968 |
-| **XGB — FI (full → top-15)** | **15 (FI)** | **0.974** | **0.95** | **0.92** | **0.94** | ~0.995 |
-| **CatBoost (recursive SHAP)** | — | 0.965 | 0.891 | 0.952 | 0.920 | **0.9938** |
+| **XGB — FI (Optuna-tuned)** | **15 (FI)** | **0.974** | **0.95** | **0.92** | **0.94** | 0.995 |
+| **CatBoost (recursive SHAP - RandomSearchCV tuned)** | 15 (recursive SHAP) | 0.965 | 0.891 | 0.952 | 0.920 | **0.994** |
 
 Submitted classification models: **NN-MI, NN-FI, XGB-FI, CatBoost**.
 
